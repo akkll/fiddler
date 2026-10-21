@@ -487,24 +487,65 @@ jobs:
           $main_content | ConvertTo-Json -Depth 5 | Set-Content -Path $source_json
 
       - name: Patch main.js to main.original.js
+        shell: pwsh
         run: |
-          $source_main = "FE/resources/app/out/main.js"
-          $main_content = Get-Content -Path $source_main -Raw
-
-          $new_main = "FE/resources/app/out/main.original.js"
-
-          $source_index = "msojocs-patch/server/index.js"
-          $index_content = Get-Content -Path $source_index -Raw
-          
-          if ((Test-Path $source_main) -and (Test-Path $source_index)) {
-            Copy-Item -Path $source_main -Destination $new_main
-
-            $appended_content = $index_content + $main_content
-
-            Set-Content -Path $source_main -Value $appended_content
-          } else {
-            Write-Host "Source main.js or index.js (from server) not found"
+          $app_dir     = Join-Path $env:GITHUB_WORKSPACE 'FE/resources/app'
+          $source_index = Join-Path $env:GITHUB_WORKSPACE 'msojocs-patch/server/index.js'
+      
+          # ---- 解析 main 入口 ----
+          if (-not (Test-Path -LiteralPath $app_dir)) {
+              $asar = Join-Path $env:GITHUB_WORKSPACE 'FE/resources/app.asar'
+              if (Test-Path -LiteralPath $asar) { throw "FE 是 app.asar 打包：$asar（需要先解 asar）" }
+              throw "FE/resources/app 不存在"
           }
+      
+          $source_main = $null
+          $pkg_path = Join-Path $app_dir 'package.json'
+          if (Test-Path -LiteralPath $pkg_path) {
+              $pkg = Get-Content -LiteralPath $pkg_path -Raw | ConvertFrom-Json
+              if ($pkg.main) { $source_main = Join-Path $app_dir $pkg.main }
+          }
+      
+          if (-not $source_main -or -not (Test-Path -LiteralPath $source_main)) {
+              $source_main = Get-ChildItem -LiteralPath $app_dir -Recurse -File -ErrorAction SilentlyContinue |
+                  Where-Object {
+                      $_.FullName -notmatch '[\\/]node_modules[\\/]' -and
+                      $_.Name -in @('main.js', 'main.cjs', 'main.mjs')
+                  } |
+                  Select-Object -First 1 -ExpandProperty FullName
+          }
+      
+          if (-not $source_main) {
+              Write-Host "=== FE/resources/app 布局 ==="
+              Get-ChildItem -LiteralPath $app_dir -Force |
+                  Select-Object Name, Mode, Length | Format-Table | Out-String | Write-Host
+              Write-Host "=== main 候选 ==="
+              Get-ChildItem -LiteralPath $app_dir -Recurse -ErrorAction SilentlyContinue `
+                  -Include main.js, main.cjs, main.mjs, index.js |
+                  Select-Object -First 30 -ExpandProperty FullName
+              throw "找不到 FE main 入口"
+          }
+      
+          if (-not (Test-Path -LiteralPath $source_index)) {
+              throw "server index.js 不存在：$source_index"
+          }
+      
+          # ---- 备份 + 打补丁（重复运行时先还原，保证幂等） ----
+          $new_main = Join-Path (Split-Path -LiteralPath $source_main -Parent) `
+                                 ('main.original' + [IO.Path]::GetExtension($source_main))
+      
+          if (Test-Path -LiteralPath $new_main) {
+              Copy-Item -LiteralPath $new_main -Destination $source_main -Force
+          } else {
+              Copy-Item -LiteralPath $source_main -Destination $new_main -Force
+          }
+      
+          $main_content  = Get-Content -LiteralPath $source_main  -Raw
+          $index_content = Get-Content -LiteralPath $source_index -Raw
+          Set-Content -LiteralPath $source_main -Value ($index_content + $main_content)
+      
+          Write-Host "Patched: $source_main"
+          Write-Host "Backup : $new_main"
 
       - name: Clean msojocs-patch
         run: |
