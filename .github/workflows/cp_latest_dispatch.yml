@@ -488,7 +488,7 @@ jobs:
           git check-ignore -v "FE/resources/app/out/file/identity.getfiddler.com/oauth/token.json"
       - name: Set user credentials
         run: |
-          $source_json = "FE/resources/app/out/file/identity.getfiddler.com/oauth/token.json"
+          $source_json = "FE/resources/app/out/identity.getfiddler.com/oauth/token.json"
           $main_content = Get-Content -Path $source_json -Raw | ConvertFrom-Json
 
           $main_content.user_info.email = $env:PATCH_USER_EMAIL
