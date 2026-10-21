@@ -473,19 +473,6 @@ jobs:
           } else {
             Write-Host "index.js (from server) not found"
           }
-      - name: Debug FE path
-        shell: pwsh
-        run: |
-          Write-Host "PWD = $(Get-Location)"
-          Write-Host "WS  = $env:GITHUB_WORKSPACE"
-          Write-Host "--- repo root ---"; Get-ChildItem -Force | Select-Object Name, Mode
-          Write-Host "--- FE exists? ---"; Test-Path "FE"
-          Write-Host "--- FE tracked files ---"; git ls-files FE | Select-Object -First 40
-          Write-Host "--- any token.json ---"
-          Get-ChildItem -Recurse -Filter token.json -ErrorAction SilentlyContinue |
-            Select-Object -First 20 -ExpandProperty FullName
-          Write-Host "--- ignored? ---"
-          git check-ignore -v "FE/resources/app/out/file/identity.getfiddler.com/oauth/token.json"
       - name: Set user credentials
         run: |
           $source_json = "FE/resources/app/out/identity.getfiddler.com/oauth/token.json"
